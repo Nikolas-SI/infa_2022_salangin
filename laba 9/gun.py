@@ -2,6 +2,7 @@ import math
 from random import choice
 from random import randint
 import pygame
+import numpy as np
 from sympy.core.evalf import rnd
 
 FPS = 30
@@ -22,8 +23,6 @@ HEIGHT = 600
 g = 1
 
 number_of_targets = 2
-
-
 
 
 class Ball:
@@ -91,15 +90,15 @@ class Ball:
 
 
 class Gun:
-    def __init__(self, screen):
+    def __init__(self, screen, x_start=40, y_start=450):
         self.screen = screen
         self.f2_power = 30
         self.f2_on = 0
         self.an = 1
         self.color = GREY
         self.width = 7
-        self.x_start = 40
-        self.y_start = 450
+        self.x_start = x_start
+        self.y_start = y_start
 
     def fire2_start(self, event):
         self.f2_on = 1
@@ -112,7 +111,7 @@ class Gun:
         """
         global balls, bullet
         bullet += 1
-        new_ball = Ball(self.screen)
+        new_ball = Ball(self.screen, self.x_start, self.y_start)
         new_ball.r += 5
         self.an = math.atan2((event.pos[1] - new_ball.y), (event.pos[0] - new_ball.x))
         new_ball.vx = self.f2_power * math.cos(self.an)
@@ -123,17 +122,19 @@ class Gun:
 
     def targetting(self, event):
         """Прицеливание. Зависит от положения мыши."""
-        delta_x = event.pos[0] - 20
+        delta_x = event.pos[0] - self.x_start
+        delta_y = event.pos[1] - self.y_start
+        h = (delta_y ** 2 + delta_x ** 2) ** 0.5
         if delta_x == 0:
             delta_x = 0.001
         if event:
-            self.an = math.atan((event.pos[1] - 450) / delta_x)
+            self.an = -math.acos(delta_x/h)
         if self.f2_on:
             self.color = RED
         else:
             self.color = GREY
 
-    def draw(self):
+    def draw_gun(self):
         x_end = self.x_start + self.f2_power * math.cos(self.an)
         y_end = self.y_start + self.f2_power * math.sin(self.an)
         pygame.draw.line(self.screen, self.color, (self.x_start, self.y_start), (x_end, y_end), self.width)
@@ -164,8 +165,10 @@ class Target:
         self.live = 1
 
     def hit(self, points=1):
+        global score
         """Попадание шарика в цель."""
         self.points += points
+        score += points
 
     def draw(self):
         pygame.draw.circle(
@@ -202,21 +205,73 @@ class Target:
             self.x += self.vx
 
 
+class Tank(Gun):
+    def __init__(self, screen):
+        super().__init__(screen)
+        self.x = 0
+        self.width = 10
+        self.y = HEIGHT - self.width
+        self.length = 20
+        self.k_right_on = 0
+        self.k_left_on = 0
+        self.speed = 5
+        self.x_start = self.x + self.length/2
+        self.y_start = self.y
+        self.screen = screen
+        self.f2_power = 10
+        self.f2_on = 0
+        self.an = 1
+        self.color = GREY
+        self.width = 7
+
+    def k_right_down(self):
+        self.k_right_on = 1
+
+    def k_left_down(self):
+        self.k_left_on = 1
+
+    def k_right_up(self):
+        self.k_right_on = 0
+
+    def k_left_up(self):
+        self.k_left_on = 0
+
+    def move(self):
+        if self.k_right_on:
+            self.x += self.speed
+            self.x_start += self.speed
+        elif self.k_left_on:
+            self.x -= self.speed
+            self.x_start -= self.speed
+
+    def draw_body(self):
+        pygame.draw.rect(screen, RED, (self.x, self.y, self.length, self.width))
+
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
+f = pygame.font.SysFont('arial', 20)
+score = 0
+sc_text = f.render("счет: {}".format(score), 1, BLACK, (255, 255, 255))
+pos = sc_text.get_rect(center=(30, 30))
 bullet = 0
 balls = []
 targets = []
 clock = pygame.time.Clock()
-gun = Gun(screen)
+# gun = Gun(screen)
+tank = Tank(screen)
 for i in range(0, number_of_targets):
     targets.append(Target())
 finished = False
 
 while not finished:
+    sc_text = f.render("счёт: {}".format(score), 1, BLACK, (255, 255, 255))
     screen.fill(WHITE)
-    gun.draw()
+    # gun.draw()
+    tank.draw_body()
+    tank.draw_gun()
+    tank.move()
+    screen.blit(sc_text, pos)
     for target in targets:
         target.move()
         target.draw()
@@ -232,11 +287,21 @@ while not finished:
         if event.type == pygame.QUIT:
             finished = True
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            gun.fire2_start(event)
+            tank.fire2_start(event)
         elif event.type == pygame.MOUSEBUTTONUP:
-            gun.fire2_end(event)
+            tank.fire2_end(event)
         elif event.type == pygame.MOUSEMOTION:
-            gun.targetting(event)
+            tank.targetting(event)
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_d:
+                tank.k_right_down()
+            if event.key == pygame.K_a:
+                tank.k_left_down()
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_d:
+                tank.k_right_up()
+            elif event.key == pygame.K_a:
+                tank.k_left_up()
 
     for b in balls:
         b.move()
@@ -245,6 +310,6 @@ while not finished:
                 target.live = 0
                 target.hit()
                 target.new_target()
-    gun.power_up()
+    tank.power_up()
 
 pygame.quit()
