@@ -22,14 +22,14 @@ WIDTH = 800
 HEIGHT = 600
 g = 1
 
-number_of_targets = 2
-
+number_of_targets = 10
+number_of_bombs = 10
 
 class Ball:
     def __init__(self, screen: pygame.Surface, x=40, y=450):
         """ Конструктор класса ball
-
         Args:
+        screen - экран
         x - начальное положение мяча по горизонтали
         y - начальное положение мяча по вертикали
         """
@@ -47,7 +47,7 @@ class Ball:
 
         Метод описывает перемещение мяча за один кадр перерисовки. То есть, обновляет значения
         self.x и self.y с учетом скоростей self.vx и self.vy, силы гравитации, действующей на мяч,
-        и стен по краям окна (размер окна 800х600).
+        и стен по краям окна.
         """
         self.x += self.vx
         self.y += self.vy
@@ -114,8 +114,8 @@ class Gun:
         new_ball = Ball(self.screen, self.x_start, self.y_start)
         new_ball.r += 5
         self.an = math.atan2((event.pos[1] - new_ball.y), (event.pos[0] - new_ball.x))
-        new_ball.vx = self.f2_power * math.cos(self.an)
-        new_ball.vy = self.f2_power * math.sin(self.an)
+        new_ball.vx = 2 * self.f2_power * math.cos(self.an)
+        new_ball.vy = 2 * self.f2_power * math.sin(self.an)
         balls.append(new_ball)
         self.f2_on = 0
         self.f2_power = 10
@@ -128,7 +128,7 @@ class Gun:
         if delta_x == 0:
             delta_x = 0.001
         if event:
-            self.an = -math.acos(delta_x/h)
+            self.an = -math.acos(delta_x / h)
         if self.f2_on:
             self.color = RED
         else:
@@ -141,11 +141,37 @@ class Gun:
 
     def power_up(self):
         if self.f2_on:
-            if self.f2_power < 100:
+            if self.f2_power < 10000:
                 self.f2_power += 1
             self.color = RED
         else:
             self.color = GREY
+
+
+class Bomb():
+    def __init__(self):
+        self.x = randint(2, WIDTH)
+        self.y = 0
+        self.r = 5
+        self.color = MAGENTA
+        self.speed = randint(5, 20)
+        self.live = 1
+
+    def draw(self):
+        pygame.draw.circle(
+            screen,
+            self.color,
+            (self.x, self.y),
+            self.r
+        )
+
+    def move(self):
+        self.y += self.speed
+        if self.y >= HEIGHT:
+            self.live = 0
+
+    def hittest_with_tank(self, obj):
+        return not (self.x - obj.x - obj.length > self.r or self.x - obj.x < - self.r) and obj.y - self.y < self.r
 
 
 class Target:
@@ -156,19 +182,21 @@ class Target:
 
     def new_target(self):
         """ Инициализация новой цели. """
-        self.x = randint(600, 780)
-        self.y = randint(300, 550)
+        self.x = randint(0, 780)
+        self.y = randint(0, 550)
         self.r = randint(2, 50)
         self.color = RED
-        self.vx = randint(-10, 10)
-        self.vy = randint(-10, 10)
+        self.vx = randint(-20, 30)
+        self.vy = randint(-20, 30)
         self.live = 1
 
     def hit(self, points=1):
-        global score
+        global score, max_score
         """Попадание шарика в цель."""
         self.points += points
         score += points
+        if score > max_score:
+            max_score = score
 
     def draw(self):
         pygame.draw.circle(
@@ -204,6 +232,11 @@ class Target:
             self.vx = -self.vx
             self.x += self.vx
 
+    def hittest_with_tank(self, obj):
+        global score
+        if not (self.x - obj.x - obj.length > self.r or self.x - obj.x < - self.r) and obj.y - self.y < self.r:
+            score -= 1
+
 
 class Tank(Gun):
     def __init__(self, screen):
@@ -211,11 +244,11 @@ class Tank(Gun):
         self.x = 0
         self.width = 10
         self.y = HEIGHT - self.width
-        self.length = 20
+        self.length = 30
         self.k_right_on = 0
         self.k_left_on = 0
-        self.speed = 5
-        self.x_start = self.x + self.length/2
+        self.speed = 10
+        self.x_start = self.x + self.length / 2
         self.y_start = self.y
         self.screen = screen
         self.f2_power = 10
@@ -237,6 +270,10 @@ class Tank(Gun):
         self.k_left_on = 0
 
     def move(self):
+        if self.x + self.length >= WIDTH:
+            self.k_right_on = 0
+        if self.x <= 0:
+            self.k_left_on = 0
         if self.k_right_on:
             self.x += self.speed
             self.x_start += self.speed
@@ -249,6 +286,7 @@ class Tank(Gun):
 
 
 pygame.init()
+name = input("Your name: ")
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 f = pygame.font.SysFont('arial', 20)
 score = 0
@@ -257,13 +295,17 @@ pos = sc_text.get_rect(center=(30, 30))
 bullet = 0
 balls = []
 targets = []
+bombs = []
 clock = pygame.time.Clock()
 # gun = Gun(screen)
 tank = Tank(screen)
+for i in range(0, number_of_bombs):
+    bombs.append(Bomb())
 for i in range(0, number_of_targets):
     targets.append(Target())
 finished = False
-
+max_score = 0
+sc = 0
 while not finished:
     sc_text = f.render("счёт: {}".format(score), 1, BLACK, (255, 255, 255))
     screen.fill(WHITE)
@@ -272,6 +314,9 @@ while not finished:
     tank.draw_gun()
     tank.move()
     screen.blit(sc_text, pos)
+    for bomb in bombs:
+        bomb.move()
+        bomb.draw()
     for target in targets:
         target.move()
         target.draw()
@@ -281,6 +326,9 @@ while not finished:
         if not b.live:
             balls.remove(b)
     pygame.display.update()
+
+    for target in targets:
+        finished = target.hittest_with_tank(tank)
 
     clock.tick(FPS)
     for event in pygame.event.get():
@@ -303,6 +351,18 @@ while not finished:
             elif event.key == pygame.K_a:
                 tank.k_left_up()
 
+    for bomb in bombs:
+        if bomb.hittest_with_tank(tank):
+            bomb.live = 0
+            score -= 1
+            if score < 0:
+                finished = True
+
+    for bomb in bombs:
+        if bomb.live == 0:
+            bombs.remove(bomb)
+            bombs.append(Bomb())
+
     for b in balls:
         b.move()
         for target in targets:
@@ -311,5 +371,11 @@ while not finished:
                 target.hit()
                 target.new_target()
     tank.power_up()
+    if score < 0:
+        finished = True
 
+
+f = open('score.txt', 'a')
+f.writelines(f"{name}: {max_score} \n")
 pygame.quit()
+
